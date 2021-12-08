@@ -4,6 +4,7 @@ import pickle
 import os
 
 
+# get something like one hot vector for the input.
 def pad_matrix(seq_diagnosis_codes, seq_labels, n_diagnosis_codes):
     lengths = np.array([len(seq) for seq in seq_diagnosis_codes])
     n_samples = len(seq_diagnosis_codes)
@@ -12,6 +13,7 @@ def pad_matrix(seq_diagnosis_codes, seq_labels, n_diagnosis_codes):
     f_1 = 1e-5
     batch_diagnosis_codes = f_1 * np.ones((maxlen, n_samples, n_diagnosis_codes), dtype=np.float32)
 
+    # it is 0.999 for the choose category, and 10^-5 for other categories
     for idx, c in enumerate(seq_diagnosis_codes):
         for x, subseq in zip(batch_diagnosis_codes[:, idx, :], c[:]):
             l = 1
@@ -23,6 +25,7 @@ def pad_matrix(seq_diagnosis_codes, seq_labels, n_diagnosis_codes):
     return batch_diagnosis_codes, batch_labels
 
 
+# if test=True, load the test file, or load the whole file
 def load_data(Dataset, test=True):
     if test:
         data = pickle.load(open(Test_Data_File[Dataset], 'rb'))
@@ -35,6 +38,7 @@ def load_data(Dataset, test=True):
     return data, label
 
 
+# After attack, summarize the success rate, changed num and so on
 def write_file(Dataset, Model_Type, budget, algorithm, time_limit):
     log_f = open('./Logs/%s/MF_%s_%d_%a.bak' % (Dataset, Model_Type, budget, algorithm), 'w+')
     TITLE = '=== ' + Dataset + Model_Type + str(budget) + algorithm + ' time = ' + str(time_limit) + ' ==='
@@ -84,12 +88,14 @@ def write_file(Dataset, Model_Type, budget, algorithm, time_limit):
     print('end')
 
 
+# load the dataset
 def preparation(dataset):
     x = pickle.load(open('./dataset/'+dataset+'X.pickle', 'rb'))
     y = pickle.load(open('./dataset/'+dataset+'Y.pickle', 'rb'))
     return x, y
 
 
+# make sure the path exist
 def make_dir(path):
     if os.path.isdir(path):
         pass
@@ -97,6 +103,7 @@ def make_dir(path):
         os.mkdir(path)
 
 
+# make some vector one hot vector
 def one_hot_labels(t_labels, n_labels):
     return torch.zeros(t_labels.size(0), n_labels).long().scatter(1, t_labels.unsqueeze(1).cpu(), 1).cuda()
 

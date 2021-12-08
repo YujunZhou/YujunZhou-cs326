@@ -2,15 +2,17 @@ import time
 from itertools import combinations
 import argparse
 from utils import *
-import copy
 
 
-parser = argparse.ArgumentParser(description='splice')  # 创建parser对象
+# creating parser object
+parser = argparse.ArgumentParser(description='FSGS')
 parser.add_argument('--budget', default=5, type=int, help='purturb budget')
 parser.add_argument('--dataset', default='Splice', type=str, help='dataset')
 parser.add_argument('--modeltype', default='Normal', type=str, help='model type')
 parser.add_argument('--time', default=60, type=int, help='time limit')
-args = parser.parse_args()  # 解析参数，此处args是一个命名空间列表
+args = parser.parse_args()
+
+# There are two datasets, some models have the same name for the two dataset, so we just load one depending on the detaset.
 if args.dataset == 'Splice':
     from Splicemodels import *
 else:
@@ -19,7 +21,9 @@ else:
 
 class Attacker(object):
     def __init__(self, best_parameters_file, log_f):
+        # the classes of the dataset
         self.n_labels = num_classes[Dataset]
+        # load the model
         if 'gnnlstm' in Model_Type:
             self.model = GNNLSTMtest(Model_Type)
         elif 'gnn' in Model_Type:
@@ -28,18 +32,25 @@ class Attacker(object):
             self.model = SpliceLSTM()
         elif Dataset == 'IPS':
             self.model = IPSLSTM()
+
         if torch.cuda.is_available():
             self.model = self.model.cuda()
+        # load the trained parameters of the classifier
         self.model.load_state_dict(torch.load(best_parameters_file, map_location='cpu'))
+        # We only test data, so use this
         self.model.eval()
+        # the log file
         self.log_f = log_f
+        # loss function
         self.criterion = nn.CrossEntropyLoss()
+        # the number of the categories of the dataset
         self.n_diagonosis_codes = num_category[Dataset]
 
-    def input_handle(self, funccall, y):  # input:funccall, output:(seq_len,n_sample,m)[i][j][k]=k,
-        # (seq_len,n_sample,m)对一个[i][j]选中的[k]为0.96，其余[k']=0
+    def input_handle(self, funccall, y):  # input:funccall, output:(seq_len,n_sample,m)
+        # put the funccall and label into a list
         funccall = [funccall]
         y = [y]
+        # change the list to almost one hot vectors
         t_diagnosis_codes, _ = pad_matrix(funccall, y, self.n_diagonosis_codes)
         return torch.tensor(t_diagnosis_codes).cuda()
 
@@ -47,12 +58,15 @@ class Attacker(object):
         weight_of_embed_codes = self.input_handle(funccall, y)
         logit = self.model(weight_of_embed_codes)
         logit = logit.cpu()
+        # get the prediction
         pred = torch.max(logit, 1)[1].view((1,)).data.numpy()
         logit = logit.data.cpu().numpy()
+        # get the false labels
         label_set = set(range(self.n_labels))
         label_set.remove(y)
         list_label_set = list(label_set)
         g = logit[0][y]
+        # find the largest prediction in the false labels
         h = max([logit[0][false_class] for false_class in list_label_set])
         return pred, g, h
 
@@ -63,29 +77,32 @@ class Attacker(object):
         funccall_lists = []
         change_flag = 0
         worst_object = current_object
+        # get the false labels
         label_set = set(range(self.n_labels))
         label_set.remove(orig_label)
         list_label_set = list(label_set)
 
+        # first, classify the eval_funccall, if it is successful, skip all other things
         eval_pred, eval_g, eval_h = self.classify(eval_funccall, orig_label)
         query_num += 1
         object = eval_h - eval_g
         if object > 0:
             return object, eval_funccall, 0, query_num
+
+        # update the worst object, which is the largest object
         if object >= worst_object:
             change_flag = 1
             worst_object = object
-        # candidate_lists contains all the non-empty subsets of greedy_set
+        # candidate_lists contains all the non-empty subsets of greedy_set that are within the budget
         if greedy_set:
             for i in range(1, min(len(greedy_set) + 1, budget)):
                 subset1 = combinations(greedy_set, i)
                 for subset in subset1:
                     candidate_lists.append(list(subset))
 
+        # change the funccall based on the candidates above and get the candidate funccalls.
         for can in candidate_lists:
-
             temp_funccall = copy.deepcopy(eval_funccall)
-
             for position in can:
                 visit_idx = position[0]
                 code_idx = position[1]
@@ -95,6 +112,7 @@ class Attacker(object):
 
         query_num += len(funccall_lists)
 
+        # evaluate the candidate funccalls
         batch_size = 64
         n_batches = int(np.ceil(float(len(funccall_lists)) / float(batch_size)))
         for index in range(n_batches):  # n_batches
@@ -108,6 +126,7 @@ class Attacker(object):
             subsets_g = logit[:, orig_label]
             subsets_h = np.max([logit[:, false_class] for false_class in list_label_set], axis=0)
             subsets_object = subsets_h - subsets_g
+            # get the maximum object, and update worst object
             max_object = np.max(subsets_object)
             max_index = np.argmax(subsets_object)
 
@@ -116,15 +135,19 @@ class Attacker(object):
                 worst_object = max_object
                 best_temp_funccall = copy.deepcopy(funccall_lists[batch_size * index + max_index])
 
+        # if change flag == 0, this means the worst object never changes, then we use the best funccall calculated
+        # before as the solution for this part
         if change_flag == 0:
             success_flag = 2
 
+        # attack successfully
         if worst_object > 0:
             success_flag = 0
             # print(worst_object)
 
         return worst_object, best_temp_funccall, success_flag, query_num
 
+    # calculate which feature is changed
     def changed_set(self, eval_funccall, new_funccall):
         diff_set = set()
         for i in range(len(eval_funccall)):
@@ -159,6 +182,7 @@ class Attacker(object):
         current_object = orig_h - orig_g
         flip_funccall = funccall
         max_funccall = funccall
+        # when the classification is wrong for the original example, skip the attack
         if current_object > 0:
             robust_flag = -1
             print("Original classification error")
@@ -169,6 +193,7 @@ class Attacker(object):
                    n_changed, flip_funccall.tolist(), flip_set, iteration
 
         print(current_object)
+        # once the success_flag ==0, we attack successfully and exit
         while success_flag == 1:
             iteration += 1
             success_flag = 1
@@ -176,6 +201,7 @@ class Attacker(object):
             candidate_funccalls = []
             candidate_poses = []
 
+            # we loop over each feature and each category to find the worst object and its position
             for visit_idx in range(len(funccall)):
                 if visit_idx in greedy_set_visit_idx:
                     continue
@@ -254,22 +280,15 @@ Dataset = args.dataset
 Model_Type = args.modeltype
 budget = args.budget
 time_limit = args.time
-num_classes = {
-    'Splice': 3,
-    'IPS': 3,
-}
-
 
 print(Dataset, Model_Type)
 output_file = './Logs/%s/%s/' % (Dataset, Model_Type)
-if os.path.isdir(output_file):
-    pass
-else:
-    os.mkdir(output_file)
+make_dir(output_file)
 
 X, y = load_data(Dataset)
 best_parameters_file = model_file(Dataset, Model_Type)
 
+# ready for attack and log the files
 g_process_all = []
 mf_process_all = []
 greedy_set_process_all = []

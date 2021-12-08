@@ -5,17 +5,22 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import argparse
 from utils import *
 
-parser = argparse.ArgumentParser(description='gene')  # 创建parser对象
+
+# creating parser object
+parser = argparse.ArgumentParser(description='gene')
 parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
 parser.add_argument('--adv', default=False, type=bool, help='adversarial training or not')
 parser.add_argument('--dataset', default='Splice', type=str, help='Dataset')
-args = parser.parse_args()  # 解析参数，此处args是一个命名空间列表
+args = parser.parse_args()
+
+# There are two datasets, some models have the same name for the two dataset, so we just load one depending on the detaset.
 if args.dataset == 'Splice':
     from Splicemodels import *
 else:
     from IPSmodels import *
 
 
+# used to calculate the loss of the validation set
 def calculate_cost(model, X, y, batch_size):
     n_batches = int(np.ceil(float(len(X)) / float(batch_size)))
     cost_sum = 0.0
@@ -31,10 +36,12 @@ def calculate_cost(model, X, y, batch_size):
 
 
 def Training(Dataset, batch_size, n_epoch, lr):
+    # devide the dataset into train, validation and test
     train_idx, test_idx = train_test_split(np.array(range(num_samples[Dataset])), test_size=0.1, random_state=666)
     train_idx, val_idx = train_test_split(train_idx, test_size=0.1, random_state=66)
 
     X, y = preparation(Dataset)
+    # in adversarial training, the training data is the adversarial samples, or the samples are clean samples
     if adversarial:
         if Dataset == 'Splice':
             modified_funccall_file = open('./Logs/'+Dataset+'/Normal/greedmax_modified_funccall_5.pickle', 'rb')
@@ -94,7 +101,9 @@ def Training(Dataset, batch_size, n_epoch, lr):
         start_time = time.time()
         samples = random.sample(range(n_batches), n_batches)
 
+        # start training with randomly input batches.
         for index in samples:
+            # make X like one hot vectors.
             batch_diagnosis_codes = X_Train[batch_size * index: batch_size * (index + 1)]
             batch_labels = y_Train[batch_size * index: batch_size * (index + 1)]
             t_diagnosis_codes, t_labels = pad_matrix(batch_diagnosis_codes, batch_labels, num_category[Dataset])
@@ -116,6 +125,7 @@ def Training(Dataset, batch_size, n_epoch, lr):
         validate_cost = calculate_cost(model, X_Validation, y_Validation, batch_size)
         epoch_duaration += duration
 
+        # if the current validation cost is smaller than the current best one, then save the model
         if validate_cost < best_validate_cost:
             # for some pytorch edition, the following function do not work, '_use_new_zipfile_serialization=False'
             # should be used
@@ -149,6 +159,7 @@ def Training(Dataset, batch_size, n_epoch, lr):
     y_true = np.array([])
     y_pred = np.array([])
 
+    # test for the training set
     for index in range(n_batches):  # n_batches
 
         batch_diagnosis_codes = X_Train[batch_size * index: batch_size * (index + 1)]
@@ -172,6 +183,8 @@ def Training(Dataset, batch_size, n_epoch, lr):
     print(best_parameters_file, file=log_a, flush=True)
     print('Training data', file=log_a, flush=True)
     print('accuary:, precision:, recall:, f1:', (accuary, precision, recall, f1), file=log_a, flush=True)
+
+    # test for test set
     y_true = np.array([])
     y_pred = np.array([])
     n_batches_test = int(np.ceil(float(len(X_Test)) / float(batch_size)))

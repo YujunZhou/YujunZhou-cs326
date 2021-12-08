@@ -6,6 +6,7 @@ import pickle
 import copy
 
 
+# the model parameters for each model
 Splice_Model = {
     'Normal': './classifier/Adam_RNN.4832',
     'adversarial': './classifier/Adam_RNN.17490',
@@ -30,6 +31,7 @@ Model = {
 }
 
 
+# return the model parameter
 def model_file(Dataset, Model_Type):
     return Model[Dataset][Model_Type]
 
@@ -127,6 +129,7 @@ class GNN(nn.Module):
         x = self.fc2(x)
         x = x.relu()
 
+        # find the closest 5 neighbors and make an edge between them
         label_mat = torch.mm(y.float(), y.float().t())
         label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
         a = torch.matmul(x, x.t())
@@ -168,6 +171,7 @@ class GNNtest(GNN):
         x = self.fc2(x)
         x = x.relu()
 
+        # find the closest 5 neighbors and make an edge between them
         a = torch.matmul(x, self.x_0.t())
         norm = torch.norm(x, 2, 1).reshape(-1, 1)
         norm_0 = torch.norm(self.x_0, 2, 1).reshape(1, -1)
@@ -221,6 +225,7 @@ class GNNadv(GNN):
         if fixedge:
             edges = self.edge_0
         else:
+            # find the closest 5 neighbors and make an edge between them
             label_mat = torch.mm(y.float(), y.float().t())
             label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
             a = torch.matmul(x[:self.n], x[:self.n].t())
@@ -232,6 +237,7 @@ class GNNadv(GNN):
             A = A + A.t()
             edges = torch.cat(torch.where(A > 0), dim=0).reshape(2, -1).cuda()
             self.edge_0 = edges
+        # add extra edges based on the constraints of adversarial graph structure
         edges1 = copy.deepcopy(edges)
         edges1 += self.n
         edges2 = torch.LongTensor([range(self.n), range(self.n)]).cuda()
@@ -279,6 +285,7 @@ class GNNLSTM(nn.Module):
         x, attn_weights = self.attention(output.transpose(0, 1))
         x = x.reshape(x.size(0), -1)
 
+        # find the closest 5 neighbors and make an edge between them
         label_mat = torch.mm(y.float(), y.float().t())
         label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
         a = torch.matmul(x, x.t())
@@ -315,6 +322,7 @@ class GNNLSTMtest(GNNLSTM):
         x, attn_weights = self.attention(output.transpose(0, 1))
         x = x.reshape(x.size(0), -1)
 
+        # find the closest 5 neighbors and make an edge between them
         a = torch.matmul(x, self.x_0.t())
         norm = torch.norm(x, 2, 1).reshape(-1, 1)
         norm_0 = torch.norm(self.x_0, 2, 1).reshape(1, -1)
@@ -361,6 +369,7 @@ class GNNLSTMadv(GNNLSTM):
         if fixedge:
             edges = self.edge_0
         else:
+            # find the closest 5 neighbors and make an edge between them
             label_mat = torch.mm(y.float(), y.float().t())
             label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
             a = torch.matmul(x[:self.n], x[:self.n].t())
@@ -373,6 +382,7 @@ class GNNLSTMadv(GNNLSTM):
             edges = torch.cat(torch.where(A > 0), dim=0).reshape(2, -1).cuda()
             self.edge_0 = edges
 
+        # add extra edges based on the constraints of adversarial graph structure
         edges1 = copy.deepcopy(edges)
         edges1 += self.n
         edges2 = torch.LongTensor([range(self.n), range(self.n)]).cuda()
@@ -389,6 +399,7 @@ class GNNLSTMadv(GNNLSTM):
         return out2, x, out, self.edge_0
 
 
+# the model to capture the final feature for LSTM
 class SpliceLSTM_temp(nn.Module):
     def __init__(self):
         super(SpliceLSTM_temp, self).__init__()

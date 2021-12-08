@@ -34,6 +34,7 @@ def sensitivity_analysis(Model_Name, Dataset):
     print('-----------attack--------------')
     n_batches = int(np.ceil(float(len(X)) / float(batch_size)))
     index_all = np.array([])
+    # for each batch calculate the ones that can have correct prediction
     for index in range(n_batches):  # n_batches
 
         batch_diagnosis_codes = X[batch_size * index: batch_size * (index + 1)]
@@ -48,8 +49,10 @@ def sensitivity_analysis(Model_Name, Dataset):
 
     index_all = np.array(index_all, dtype=np.int32)
     n_batches = int(np.ceil(float(len(index_all)) / float(batch_size)))
+    # get the right prediction part
     X = X[index_all]
     y = y[index_all]
+    # for each sample, calculate the changing of the corresponding feature and category and fill them into the following
     feature_sensitivity = np.zeros((num_feature[Dataset], num_avail_category[Dataset], len(y)))
     for index in range(n_batches):  # n_batches
 
@@ -62,7 +65,8 @@ def sensitivity_analysis(Model_Name, Dataset):
         y_para = one_hot_labels(t_labels, n_labels).cpu().numpy()
         y_prob = logit * y_para
         y_prob = np.max(y_prob, axis=1)
-
+        # for each sample, calculate the changing of the corresponding feature and category and fill them into
+        # feature_sensitivity
         for i in range(num_feature[Dataset]):
             batch_diagnosis_codes_temp = copy.deepcopy(batch_diagnosis_codes)
             for j in range(num_avail_category[Dataset]):
@@ -76,7 +80,9 @@ def sensitivity_analysis(Model_Name, Dataset):
                 y_prob_diff = y_prob - y_prob_temp
                 feature_sensitivity[i][j][batch_size * index: batch_size * (index + 1)] = y_prob_diff
 
+    # get the maximum feature sensitivity for each feature (maximum category)
     feature_sensitivity_max = np.max(feature_sensitivity, 1)
+    # mean features sensitivity over all samples
     mean_sensitivity = np.mean(feature_sensitivity_max, 1)
     pickle.dump(mean_sensitivity, open(
         './Logs/'+Dataset+'/'+Model_Name+'/sensitivity.pickle', 'wb'))

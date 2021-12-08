@@ -1,5 +1,3 @@
-import copy
-import csv
 import random
 import time
 import torch_geometric
@@ -12,12 +10,16 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-parser = argparse.ArgumentParser(description='gene')  # 创建parser对象
+
+# creating parser object
+parser = argparse.ArgumentParser(description='gene')
 parser.add_argument('--lr', default=0.0001, type=float, help='lr')
 parser.add_argument('--algo', default='Normal', type=str, help='adversarial training or not')
 parser.add_argument('--dataset', default='Splice', type=str, help='Dataset')
 parser.add_argument('--model', default='linear', type=str, help='linear layer + GNN or LSTM+GNN')
-args = parser.parse_args()  # 解析参数，此处args是一个命名空间列表
+args = parser.parse_args()
+
+# There are two datasets, some models have the same name for the two dataset, so we just load one depending on the detaset.
 if args.dataset == 'Splice':
     from Splicemodels import *
 else:
@@ -29,6 +31,7 @@ random.seed(666)
 torch_geometric.seed_everything(666)
 
 
+# used to calculate the loss of the validation set
 def calculate_cost(logit, t_labels, val_mask):
     cost_sum = 0.0
     loss = F.cross_entropy(logit[val_mask], t_labels[val_mask])
@@ -40,9 +43,13 @@ def Training(Dataset, n_epoch, lr):
     X, y = preparation(Dataset)
     N = num_samples[Dataset]
 
+    # devide the dataset into train, validation and test
     train_idx, test_idx = train_test_split(np.array(range(N)), test_size=0.1, random_state=666)
     train_idx, val_idx = train_test_split(train_idx, test_size=0.1, random_state=666)
 
+    # in GNN, since we run a whole graph at one time, some nodes should be treated as training, validation and test,
+    # and we can mask others when using that set.
+    # For adversarial training, we add the whole adversarial samples (the same number as the clean samples) to the graph
     if adversarial:
         train_mask = np.zeros((N,), dtype=bool)
         train_mask[train_idx] = True
@@ -90,12 +97,14 @@ def Training(Dataset, n_epoch, lr):
     print(adversarial)
 
     if adversarial:
+        # load adversarial data
         diagnosis_codes_adv = pickle.load(open('./dataset/'+Dataset+'_perturbed.pickle', 'rb'))
         diagnosis_codes_adv = torch.LongTensor(diagnosis_codes_adv)
         diagnosis_codes = torch.LongTensor(X)
         diagnosis_codes_all = torch.cat((diagnosis_codes, diagnosis_codes_adv), dim=0)
         y_all = torch.LongTensor(y)
         y_all = torch.cat((y_all, y_all)).cuda()
+        # visualize the pretrained model
         tsne = TSNE(n_components=2)
         fig = plt.figure(figsize=(27, 250))
         fignum = 1
@@ -146,6 +155,8 @@ def Training(Dataset, n_epoch, lr):
 
         diagnosis_codes = copy.deepcopy(X)
         labels = y
+        # for adversarial training, the labels are also y, since we are using the labels to help us remove
+        # the connections of nodes from different classes in training set.
         if adversarial:
             diagnosis_codes = diagnosis_codes_all
             labels = y
@@ -156,11 +167,14 @@ def Training(Dataset, n_epoch, lr):
         t_diagnosis_codes = torch.autograd.Variable(t_diagnosis_codes, requires_grad=True)
         optimizer.zero_grad()
 
+        # remove the connection of nodes from different classes in training set.
+        # For validation and test, no restrictions.
         masked_labels = one_hot_labels(t_labels, 3)
         masked_labels[test_idx] = torch.LongTensor([1, 1, 1]).cuda()
         masked_labels[val_idx] = torch.LongTensor([1, 1, 1]).cuda()
         logit, new_features, edges, gnn_features = model(t_diagnosis_codes, masked_labels)
 
+        # use all the labels for loss
         if adversarial:
             t_labels = y_all
 
@@ -180,6 +194,8 @@ def Training(Dataset, n_epoch, lr):
         validate_cost = calculate_cost(logit, t_labels, val_mask)
         epoch_duaration += duration
 
+        # if the current validation cost is smaller than the current best one, then save the model
+        # and the features and edges.
         if validate_cost < best_validate_cost:
             # torch.save(rnn.state_dict(), output_file + 'Adam_' + Model_Name + '.' + str(epoch))
             torch.save(model.state_dict(), output_file + Dataset + Model_Name + '.' + str(epoch),
@@ -189,8 +205,9 @@ def Training(Dataset, n_epoch, lr):
             pickle.dump(gnn_features[:N], open('./gnn/' + Dataset + Model_Name + '.gnnout.pickle', 'wb'))
         print('epoch:%d, mean_cost:%f, duration:%f' % (epoch, np.mean(cost_vector), duration), file=log_f, flush=True)
 
+        # visualize every 1000 epochs
         if adversarial:
-            if epoch % 1 == 0:
+            if epoch % 1000 == 999:
                 nodes_features_cpu = new_features[:N].cpu().data.numpy()
                 gnn_features_cpu = gnn_features[:N].cpu().data.numpy()
                 nodes_tsne = tsne.fit_transform(nodes_features_cpu, y)
@@ -222,6 +239,7 @@ def Training(Dataset, n_epoch, lr):
         buf = 'Best Epoch:%d, Train_Cost:%f, Valid_Cost:%f' % (best_epoch, best_train_cost, best_validate_cost)
         print(buf, file=log_f, flush=True)
 
+    # final visualization for the best epoch
     if adversarial:
         nodes_features_cpu = pickle.load(open('./gnn/' + Dataset + Model_Name + '.nodes.pickle', 'rb')).cpu().data.numpy()
         gnn_features_cpu = pickle.load(open('./gnn/' + Dataset + Model_Name + '.gnnout.pickle', 'rb')).cpu().data.numpy()
@@ -304,7 +322,7 @@ algorithm = args.algo
 Dataset = args.dataset
 modeltype = args.model
 n_lables = 3
-n_epoch = 20
+n_epoch = 20000
 if modeltype == 'linear':
     linear = True
     Model_Name = 'gnn'

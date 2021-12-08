@@ -15,6 +15,7 @@ else:
     from IPSmodels import *
 
 
+# visualize all the models of the dataset
 def visualize(Dataset):
     tsne = TSNE(n_components=2)
     fig = plt.figure(figsize=(14, 15))
@@ -34,6 +35,7 @@ def visualize(Dataset):
     plt.savefig('gnn/' + Dataset + '.png')
 
 
+# get the final feature of LSTM based classifiers
 def get_feature(Dataset, Model_Name):
     if Dataset == 'Splice':
         model = SpliceLSTM_temp()

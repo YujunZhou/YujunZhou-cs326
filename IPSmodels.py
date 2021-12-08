@@ -6,6 +6,7 @@ import pickle
 import copy
 
 
+# the model parameters for each model
 Splice_Model = {
     'Normal': './classifier/Adam_RNN.4832',
     'adversarial': './classifier/Adam_RNN.17490',
@@ -30,6 +31,7 @@ Model = {
 }
 
 
+# return the model parameter
 def model_file(Dataset, Model_Type):
     return Model[Dataset][Model_Type]
 
@@ -112,6 +114,7 @@ class GNN(nn.Module):
         self.model_input = torch.LongTensor(range(self.n_diagnosis_codes))
 
     def forward(self, x, y):
+        # lower down the memory consuming for IPS
         x = x.permute(1, 0, 2)
         x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
         x = self.emb(x)
@@ -122,6 +125,7 @@ class GNN(nn.Module):
         x = x.reshape(x.size(0), -1)
         x = self.fc2(x)
         x = x.relu()
+        # find the closest 5 neighbors and make an edge between them
         label_mat = torch.mm(y.float(), y.float().t())
         label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
         a = torch.matmul(x, x.t())
@@ -148,6 +152,7 @@ class GNNtest(GNN):
         self.fsgs = FSGS
 
     def forward(self, x):
+        # lower down the memory consuming for IPS
         if self.fsgs:
             x = x.permute(1, 0, 2)
             x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
@@ -172,6 +177,7 @@ class GNNtest(GNN):
             x = x.reshape(x.size(0), -1)
             x = self.fc2(x)
             x = x.relu()
+        # find the closest 5 neighbors and make an edge between them
         a = torch.matmul(x, self.x_0.t())
         norm = torch.norm(x, 2, 1).reshape(-1, 1)
         norm_0 = torch.norm(self.x_0, 2, 1).reshape(1, -1)
@@ -206,6 +212,7 @@ class GNNadv(GNN):
         self.edge_0 = pickle.load(open('./gnn/IPS' + model_name + '.edges.pickle', 'rb')).cuda()
 
     def forward(self, x, y, adv=False, fixedge=False):
+        # lower down the memory consuming for IPS
         x = x.permute(1, 0, 2)
         x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
         x = self.emb(x)
@@ -219,6 +226,7 @@ class GNNadv(GNN):
         if adv or fixedge:
             edges = self.edge_0
         else:
+            # find the closest 5 neighbors and make an edge between them
             label_mat = torch.mm(y.float(), y.float().t())
             label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
             a = torch.matmul(x[:4101], x[:4101].t())
@@ -230,6 +238,7 @@ class GNNadv(GNN):
             A = A + A.t()
             edges = torch.cat(torch.where(A > 0), dim=0).reshape(2, -1).cuda()
             self.edge_0 = edges
+        # add extra edges based on the constraints of adversarial graph structure
         edges1 = copy.deepcopy(edges)
         edges1 += 4101
         edges2 = torch.LongTensor([range(4101), range(4101)]).cuda()
@@ -267,12 +276,14 @@ class GNNLSTM(nn.Module):
         self.attention = SelfAttention(self.hidden_size)
 
     def forward(self, x, y):
+        # lower down the memory consuming for IPS
         x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
         x = self.emb(x)
         x = x.relu()
         output, h_n = self.lstm(x)
         x, attn_weights = self.attention(output.transpose(0, 1))
         x = x.reshape(x.size(0), -1)
+        # find the closest 5 neighbors and make an edge between them
         label_mat = torch.mm(y.float(), y.float().t())
         label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
         a = torch.matmul(x, x.t())
@@ -300,6 +311,7 @@ class GNNLSTMtest(GNNLSTM):
         self.fsgs = FSGS
 
     def forward(self, x):
+        # lower down the memory consuming for IPS
         if self.fsgs:
             x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
             x = self.emb(x)
@@ -316,6 +328,7 @@ class GNNLSTMtest(GNNLSTM):
             output, h_n = self.lstm(x)
             x, attn_weights = self.attention(output.transpose(0, 1))
             x = x.reshape(x.size(0), -1)
+        # find the closest 5 neighbors and make an edge between them
         a = torch.matmul(x, self.x_0.t())
         norm = torch.norm(x, 2, 1).reshape(-1, 1)
         norm_0 = torch.norm(self.x_0, 2, 1).reshape(1, -1)
@@ -350,6 +363,7 @@ class GNNLSTMadv(GNNLSTM):
         self.edge_0 = pickle.load(open('./gnn/IPS' + model_name + '.edges.pickle', 'rb')).cuda()
 
     def forward(self, x, y, fixedge=False):
+        # lower down the memory consuming for IPS
         x = torch.where(x > 0.5)[2].reshape(x.size(0), x.size(1))
         x = self.emb(x)
         x = x.relu()
@@ -359,6 +373,7 @@ class GNNLSTMadv(GNNLSTM):
         if fixedge:
             edges = self.edge_0
         else:
+            # find the closest 5 neighbors and make an edge between them
             label_mat = torch.mm(y.float(), y.float().t())
             label_mat = torch.where(label_mat > 0, torch.ones_like(label_mat), label_mat)
             a = torch.matmul(x[:4101], x[:4101].t())
@@ -370,6 +385,7 @@ class GNNLSTMadv(GNNLSTM):
             A = A + A.t()
             edges = torch.cat(torch.where(A > 0), dim=0).reshape(2, -1).cuda()
             self.edge_0 = edges
+        # add extra edges based on the constraints of adversarial graph structure
         edges1 = copy.deepcopy(edges)
         edges1 += 4101
         edges2 = torch.LongTensor([range(4101), range(4101)]).cuda()
@@ -386,6 +402,7 @@ class GNNLSTMadv(GNNLSTM):
         return out2, x, out, self.edge_0
 
 
+# the model to capture the final feature for LSTM
 class IPSLSTM_temp(nn.Module):
     def __init__(self):
         super(IPSLSTM_temp, self).__init__()
