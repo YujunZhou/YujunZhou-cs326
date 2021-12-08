@@ -48,12 +48,21 @@ python visualization.py --dataset IPS
 
 ## Best performance running:
 python visualization.py --dataset IPS
+
 python visualization.py --dataset Splice
+
 python FSGSmax.py --dataset IPS --budget 5  --modeltype gnnlstmadv --time 300
+
 python OMPGSmax.py --dataset IPS --budget 5  --modeltype gnnlstmadv --time 60
+
 python FSGSmax.py --dataset Splice --budget 5  --modeltype gnnlstmadv --time 120
+
 python OMPGSmax.py --dataset Splice --budget 5  --modeltype gnnlstmadv --time 60
+
 python FSGSmax.py --dataset IPS --budget 5  --modeltype adversarial --time 300
+
 python OMPGSmax.py --dataset IPS --budget 5  --modeltype adversarial --time 60
+
 python FSGSmax.py --dataset Splice --budget 5  --modeltype adversarial --time 60
+
 python OMPGSmax.py --dataset Splice --budget 5  --modeltype adversarial --time 60
